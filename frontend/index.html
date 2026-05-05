@@ -297,46 +297,38 @@
 </head>
 <body class="h-full text-slate-200">
 
-<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<!-- ── Header ────────────────────────────────────────────────────────────── -->
 <header class="sticky top-0 z-50 border-b border-slate-700/60">
-  <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-    <div class="flex items-center gap-4">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 via-purple-500 to-violet-600
-                  flex items-center justify-center text-xl font-bold glow-blue animate-bounce"
-           style="animation-duration: 3s;">⚡</div>
-      <div>
-        <div class="font-bold text-white text-lg tracking-tight">Inference Router</div>
-        <div class="text-xs text-slate-400 font-mono">GPU-Aware Cost Optimization</div>
-      </div>
+  <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+    <div class="flex items-center gap-6">
+      <div class="logo">⚡ ROUTER</div>
+      <div class="logo-sub">GPU-OPTIMIZED INFERENCE ENGINE</div>
     </div>
-    <div id="providerBadges" class="flex items-center gap-2 text-xs text-slate-400">
-      <span class="pulse-dot">Loading…</span>
+    <div id="providerBadges" class="flex items-center gap-3 text-xs text-slate-400">
+      <span class="pulse-dot"></span>
+      <span>SYSTEMS ONLINE</span>
     </div>
   </div>
 </header>
 
 <!-- ── Stats Bar ───────────────────────────────────────────────────────── -->
-<div class="max-w-7xl mx-auto px-6 pt-8 pb-4">
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-    <div class="stat-card glass-premium rounded-xl p-5">
-      <div class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-2">Total Requests</div>
-      <div id="stat-total" class="text-3xl font-bold text-white font-mono">—</div>
-      <div class="text-xs text-slate-500 mt-1">from start</div>
+<div class="max-w-7xl mx-auto px-6 pt-10 pb-4">
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Requests</div>
+      <div id="stat-total" class="stat-value">—</div>
     </div>
-    <div class="stat-card glass-premium rounded-xl p-5">
-      <div class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-2">Avg Effective Cost</div>
-      <div id="stat-cost" class="text-3xl font-bold text-emerald-400 font-mono">—</div>
-      <div class="text-xs text-slate-500 mt-1">per request</div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Effective Cost</div>
+      <div id="stat-cost" class="stat-value">—</div>
     </div>
-    <div class="stat-card glass-premium rounded-xl p-5">
-      <div class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-2">Avg Latency</div>
-      <div id="stat-lat" class="text-3xl font-bold text-blue-400 font-mono">—</div>
-      <div class="text-xs text-slate-500 mt-1">milliseconds</div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Latency</div>
+      <div id="stat-lat" class="stat-value">—</div>
     </div>
-    <div class="stat-card glass-premium rounded-xl p-5">
-      <div class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-2">Cost Saved</div>
-      <div id="stat-saved" class="text-3xl font-bold text-violet-400 font-mono">—</div>
-      <div class="text-xs text-slate-500 mt-1">vs. static routing</div>
+    <div class="stat-card">
+      <div class="stat-label">Cost Saved</div>
+      <div id="stat-saved" class="stat-value">—</div>
     </div>
   </div>
 </div>
@@ -348,28 +340,24 @@
   <aside class="lg:col-span-1 flex flex-col gap-4">
 
     <!-- Provider Status -->
-    <div class="glass-premium rounded-xl p-6 border-l-4 border-l-blue-500">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4 text-gradient-blue">
-        🔗 Providers
-      </h2>
-      <div id="providerList" class="flex flex-col gap-2 text-sm">
+    <div class="panel">
+      <div class="panel-header">🔗 PROVIDER STATUS</div>
+      <div class="panel-content">
+        <div id="providerList" class="flex flex-col gap-2 text-sm">
         <div class="text-slate-500 text-xs">Loading…</div>
       </div>
     </div>
 
     <!-- Live Pricing Panel -->
-    <div class="glass-premium rounded-xl p-6 border-l-4 border-l-emerald-500">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300 text-gradient-green">
-          💰 Token Pricing
-        </h2>
-        <div class="flex items-center gap-2">
+    <div class="panel">
+      <div class="panel-header">💰 TOKEN PRICING</div>
+      <div class="panel-content">
+        <div class="flex items-center justify-between mb-3">
           <span id="pricingRefreshTime" class="text-xs text-slate-600"></span>
           <button onclick="forcePricingRefresh()"
             class="text-xs text-slate-500 hover:text-slate-300 transition-colors hover:rotate-180 duration-300"
             title="Refresh prices now">↻</button>
         </div>
-      </div>
       <div id="pricingLegend" class="flex items-center gap-3 mb-3 text-xs">
         <span class="flex items-center gap-1">
           <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
@@ -390,34 +378,31 @@
     </div>
 
     <!-- Routing Controls -->
-    <div class="glass-premium rounded-xl p-6 border-l-4 border-l-purple-500">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300 mb-5 text-gradient-purple">
-        ⚙️ Routing Config
-      </h2>
-      <label class="block mb-5">
-        <span class="text-xs text-slate-300 font-semibold">Max Output Tokens</span>
-        <input id="maxTokens" type="number" value="256" min="1" max="4096"
-          class="mt-2 w-full bg-slate-800 border border-slate-600 rounded-lg
-                 px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono" />
-      </label>
-      <label class="block">
-        <span class="text-xs text-slate-300 font-semibold">
-          Latency Weight λ <span class="text-slate-500 text-xs">($/sec)</span>
-        </span>
-        <span class="text-xs text-slate-500 mt-1 block">↑ Higher = prefer faster providers</span>
-        <input id="latencyWeight" type="number" value="0.001" min="0" step="0.0001"
-          class="mt-2 w-full bg-slate-800 border border-slate-600 rounded-lg
-                 px-4 py-2 text-sm font-mono text-white focus:outline-none
-                 focus:ring-2 focus:ring-purple-500" />
-      </label>
+    <div class="panel">
+      <div class="panel-header">⚙️ ROUTING CONFIG</div>
+      <div class="panel-content">
+        <label class="block mb-5">
+          <span class="text-xs text-slate-300 font-semibold">Max Output Tokens</span>
+          <input id="maxTokens" type="number" value="256" min="1" max="4096"
+            class="mt-2 w-full text-neon-green" />
+        </label>
+        <label class="block">
+          <span class="text-xs font-semibold">
+            Latency Weight λ <span class="text-slate-500 text-xs">($/sec)</span>
+          </span>
+          <span class="text-xs text-slate-500 mt-1 block">↑ Higher = prefer faster</span>
+          <input id="latencyWeight" type="number" value="0.001" min="0" step="0.0001"
+            class="mt-2 w-full" />
+        </label>
+      </div>
     </div>
 
     <!-- Cost Chart -->
-    <div class="glass-premium rounded-xl p-6 border-l-4 border-l-violet-500" id="chartCard" style="display:none">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4 text-gradient-purple">
-        📊 Cost Breakdown
-      </h2>
-      <canvas id="costChart" height="160"></canvas>
+    <div class="panel" id="chartCard" style="display:none">
+      <div class="panel-header">📊 COST BREAKDOWN</div>
+      <div class="panel-content">
+        <canvas id="costChart" height="160"></canvas>
+      </div>
     </div>
 
   </aside>
@@ -426,88 +411,75 @@
   <main class="lg:col-span-2 flex flex-col gap-4">
 
     <!-- Prompt Input -->
-    <div class="glass-premium rounded-xl p-6 border-t-4 border-t-blue-500">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">
-        ✍️ Your Prompt
-      </h2>
-      <textarea id="prompt" rows="5" placeholder="Enter your prompt here…"
-        class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-4 py-3
-               text-sm text-white placeholder-slate-500
-               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
-      ></textarea>
-      <div class="flex items-center justify-between mt-4">
-        <span id="tokenEst" class="text-xs text-slate-500"></span>
-        <button id="submitBtn" onclick="submitPrompt()"
-          class="btn-primary px-6 py-3 rounded-lg text-white text-sm font-bold hover:opacity-90 active:scale-95
-                 transition-all disabled:opacity-50 disabled:cursor-not-allowed glow-blue">
-          🚀 Route &amp; Complete
-        </button>
+    <div class="panel">
+      <div class="panel-header">✍️ YOUR PROMPT</div>
+      <div class="panel-content">
+        <textarea id="prompt" rows="5" placeholder="Enter your prompt here…"
+          class="w-full font-mono"></textarea>
+        <div class="flex items-center justify-between mt-4">
+          <span id="tokenEst" class="text-xs text-slate-500"></span>
+          <button id="submitBtn" onclick="submitPrompt()"
+            class="btn-fire">🚀 TRANSMIT</button>
+        </div>
       </div>
     </div>
 
     <!-- Routing Decision -->
-    <div id="routingPanel" class="glass-premium rounded-xl p-6 slide-in border-t-4 border-t-emerald-500" style="display:none">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300 mb-5">
-        🎯 Routing Decision
-      </h2>
-
-      <!-- Winner Banner -->
-      <div class="winner-banner px-5 py-4 mb-6 flex items-center gap-4">
-        <span class="text-2xl">🏆</span>
-        <div class="flex-1">
-          <div id="winnerName" class="text-sm font-bold text-emerald-300"></div>
-          <div id="winnerSavings" class="text-xs text-emerald-200/70 mt-1"></div>
+    <div id="routingPanel" class="panel slide-in" style="display:none">
+      <div class="panel-header">🎯 ROUTING DECISION</div>
+      <div class="panel-content">
+        <!-- Winner Banner -->
+        <div class="winner-banner">
+          <div class="text-sm text-slate-400 mb-2">OPTIMAL PROVIDER SELECTED</div>
+          <div class="winner-title">🏆 <span id="winnerName"></span></div>
+          <div id="winnerSavings" class="text-xs text-slate-400 mt-2"></div>
+          <div class="winner-value" id="winnerCost"></div>
         </div>
-        <div class="text-right">
-          <div id="winnerCost" class="text-lg font-mono font-bold text-emerald-300"></div>
-          <div class="text-xs text-emerald-200/70">effective cost</div>
+
+        <!-- Candidates Table -->
+        <div class="overflow-x-auto rounded-lg">
+          <table class="table-neon">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Model</th>
+                <th style="text-align: right;">Tokens</th>
+                <th style="text-align: right;">Compute $</th>
+                <th style="text-align: right;">Latency</th>
+                <th style="text-align: right;">Lat $</th>
+                <th style="text-align: right;">Total $</th>
+              </tr>
+            </thead>
+            <tbody id="candidatesBody"></tbody>
+          </table>
         </div>
-      </div>
 
-      <!-- Candidates Table -->
-      <div class="overflow-x-auto rounded-lg bg-slate-900/30 p-1">
-        <table class="table-premium w-full text-xs">
-          <thead>
-            <tr class="text-slate-400 border-b-2 border-slate-700">
-              <th class="text-left py-3 px-4 font-bold">Provider</th>
-              <th class="text-left py-3 px-4 font-bold">Model</th>
-              <th class="text-right py-3 px-4 font-bold">Tokens</th>
-              <th class="text-right py-3 px-4 font-bold">Compute $</th>
-              <th class="text-right py-3 px-4 font-bold">Latency</th>
-              <th class="text-right py-3 px-4 font-bold">Lat $</th>
-              <th class="text-right py-3 px-4 font-bold">Total $</th>
-            </tr>
-          </thead>
-          <tbody id="candidatesBody"></tbody>
-        </table>
-      </div>
-
-      <div class="mt-5 p-4 bg-slate-900/40 rounded-lg text-xs text-slate-400 font-mono border-l-2 border-blue-500">
-        <div class="text-slate-300 mb-2">Formula: effective_cost = compute_cost + λ × latency_s</div>
-        <div>λ = <strong id="lambdaDisplay" class="text-blue-400"></strong> $/sec</div>
+        <div class="mt-5 p-4 bg-slate-900/40 border-l-2 border-neon-green text-xs font-mono">
+          <div class="text-slate-300 mb-2">FORMULA: effective_cost = compute_cost + λ × latency_s</div>
+          <div class="neon-green">λ = <span id="lambdaDisplay"></span> $/sec</div>
+        </div>
       </div>
     </div>
 
     <!-- Response -->
-    <div id="responsePanel" class="glass-premium rounded-xl p-6 slide-in border-t-4 border-t-violet-500" style="display:none">
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300">
-          💬 Response
-        </h2>
-        <div id="responseMeta" class="flex items-center gap-4 text-xs text-slate-400"></div>
-      </div>
-      <div class="response-box">
-        <div id="responseText"
-          class="text-sm text-slate-100 leading-relaxed whitespace-pre-wrap font-mono"></div>
+    <div id="responsePanel" class="panel slide-in" style="display:none">
+      <div class="panel-header">💬 RESPONSE OUTPUT</div>
+      <div class="panel-content">
+        <div id="responseMeta" class="flex items-center gap-4 text-xs text-slate-400 mb-3"></div>
+        <div class="response-box">
+          <div id="responseText"></div>
+        </div>
       </div>
     </div>
 
     <!-- Loading Spinner -->
-    <div id="loadingPanel" class="glass-premium rounded-xl p-12 flex flex-col items-center
-                                  justify-center gap-6 slide-in border-t-4 border-t-blue-500" style="display:none">
-      <div class="spinner"></div>
-      <div class="text-sm text-slate-300 font-semibold" id="loadingText">Evaluating providers…</div>
-      <div class="text-xs text-slate-500">Analyzing costs and latency</div>
+    <div id="loadingPanel" class="panel slide-in" style="display:none">
+      <div class="panel-header">⏳ PROCESSING</div>
+      <div class="panel-content flex flex-col items-center justify-center gap-6 py-12">
+        <div class="spinner"></div>
+        <div class="text-sm text-slate-300 font-semibold" id="loadingText">Analyzing providers…</div>
+        <div class="text-xs text-slate-500">Evaluating costs and latency</div>
+      </div>
     </div>
 
   </main>
@@ -515,33 +487,33 @@
 
 <!-- ── History ────────────────────────────────────────────────────────── -->
 <div class="max-w-7xl mx-auto px-6 pb-12">
-  <div class="glass-premium rounded-xl p-6 border-b-4 border-b-slate-700">
-    <div class="flex items-center justify-between mb-5">
-      <h2 class="text-xs font-bold uppercase tracking-widest text-slate-300">
-        📜 Request History
-      </h2>
-      <button onclick="loadHistory()"
-        class="text-xs text-slate-500 hover:text-slate-300 transition-colors hover:rotate-180 duration-300">
-        Refresh ↻
-      </button>
-    </div>
-    <div class="overflow-x-auto rounded-lg bg-slate-900/30 p-1">
-      <table class="table-premium w-full text-xs">
-        <thead>
-          <tr class="text-slate-400 border-b-2 border-slate-700">
-            <th class="text-left py-3 px-4 font-bold w-8">#</th>
-            <th class="text-left py-3 px-4 font-bold">Time</th>
-            <th class="text-left py-3 px-4 font-bold">Prompt</th>
-            <th class="text-left py-3 px-4 font-bold">Provider</th>
-            <th class="text-left py-3 px-4 font-bold">Model</th>
-            <th class="text-right py-3 px-4 font-bold">Cost $</th>
-            <th class="text-right py-3 px-4 font-bold">Latency</th>
-          </tr>
-        </thead>
-        <tbody id="historyBody">
-          <tr><td colspan="7" class="py-6 text-center text-slate-600">No requests yet.</td></tr>
-        </tbody>
-      </table>
+  <div class="panel">
+    <div class="panel-header">📜 REQUEST HISTORY</div>
+    <div class="panel-content">
+      <div class="flex items-center justify-between mb-3">
+        <button onclick="loadHistory()"
+          class="text-xs text-slate-500 hover:text-slate-300 transition-colors hover:rotate-180 duration-300">
+          Refresh ↻
+        </button>
+      </div>
+      <div class="overflow-x-auto rounded-lg">
+        <table class="table-neon">
+          <thead>
+            <tr>
+              <th style="width: 30px;">#</th>
+              <th>Time</th>
+              <th>Prompt</th>
+              <th>Provider</th>
+              <th>Model</th>
+              <th style="text-align: right;">Cost $</th>
+              <th style="text-align: right;">Latency</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="7" class="py-6 text-center text-slate-600">No requests yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
