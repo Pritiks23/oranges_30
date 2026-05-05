@@ -366,7 +366,7 @@ function renderRoutingDecision(resp) {
 
 function renderCostChart(candidates) {
   $('chartCard').style.display = 'block';
-  const labels  = candidates.map(c => c.provider_display.replace(' ', '\n'));
+      const labels  = candidates.map(c => c.provider_display.replace(/ /g, '\n'));
   const compute = candidates.map(c => c.compute_cost);
   const latency = candidates.map(c => c.latency_cost);
 

@@ -40,7 +40,7 @@ def build_candidates(
 ) -> List[ProviderCandidate]:
     """Evaluate all providers and return ranked ProviderCandidate list."""
     est_input = estimate_tokens(prompt)
-    est_output = min(max_tokens, 200)  # conservative estimate for pre-flight
+    est_output = min(max_tokens, 200)  # conservative: most responses fit within 200 tokens
 
     candidates: List[ProviderCandidate] = []
 

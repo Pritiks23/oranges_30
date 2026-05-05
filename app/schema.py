@@ -1,7 +1,7 @@
 """Pydantic schemas for request / response payloads."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,7 +51,7 @@ class CompletionResponse(BaseModel):
     latency_weight: float
     is_mock: bool
     candidates: List[ProviderCandidate]
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class ProviderStatus(BaseModel):
