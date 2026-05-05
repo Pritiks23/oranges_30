@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inference Router</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #0b0f1a; font-family: system-ui, -apple-system, sans-serif; }
+    .glass {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(12px);
+    }
+    .glow-blue  { box-shadow: 0 0 20px rgba(59,130,246,0.25); }
+    .glow-green { box-shadow: 0 0 20px rgba(16,185,129,0.25); }
+    .winner-row { background: rgba(16,185,129,0.12); border-left: 3px solid #10b981; }
+    .pulse-dot::before {
+      content: '';
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 2s infinite;
+      margin-right: 6px;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:.5; transform:scale(1.3); }
+    }
+    .slide-in { animation: slideIn .35s ease; }
+    @keyframes slideIn {
+      from { opacity:0; transform:translateY(12px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .fade-in { animation: fadeIn .4s ease; }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    textarea { resize: vertical; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius:3px; }
+  </style>
+</head>
+<body class="h-full text-slate-200">
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header class="glass sticky top-0 z-50 border-b border-slate-700/60">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600
+                  flex items-center justify-center text-lg font-bold glow-blue">⚡</div>
+      <span class="font-semibold text-white text-base tracking-tight">Inference Router</span>
+      <span class="hidden sm:block text-xs text-slate-400 border border-slate-700 rounded-full
+                   px-2 py-0.5 font-mono">
+        min cost = compute$ + λ·latency
+      </span>
+    </div>
+    <div id="providerBadges" class="flex items-center gap-2 text-xs text-slate-400">
+      <span class="pulse-dot">Loading…</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Stats Bar ───────────────────────────────────────────────────────── -->
+<div class="max-w-7xl mx-auto px-6 pt-6 pb-2">
+  <div id="statsBar" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="glass rounded-xl p-4">
+      <div class="text-xs text-slate-400 mb-1">Total Requests</div>
+      <div id="stat-total" class="text-2xl font-bold text-white">—</div>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <div class="text-xs text-slate-400 mb-1">Avg Effective Cost</div>
+      <div id="stat-cost" class="text-2xl font-bold text-emerald-400">—</div>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <div class="text-xs text-slate-400 mb-1">Avg Latency</div>
+      <div id="stat-lat" class="text-2xl font-bold text-blue-400">—</div>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <div class="text-xs text-slate-400 mb-1">Total Cost Saved</div>
+      <div id="stat-saved" class="text-2xl font-bold text-violet-400">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main Layout ────────────────────────────────────────────────────── -->
+<div class="max-w-7xl mx-auto px-6 py-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+  <!-- Left Sidebar -->
+  <aside class="lg:col-span-1 flex flex-col gap-4">
+
+    <!-- Provider Status -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+        Providers
+      </h2>
+      <div id="providerList" class="flex flex-col gap-2 text-sm">
+        <div class="text-slate-500 text-xs">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Routing Controls -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+        Routing Parameters
+      </h2>
+      <label class="block mb-4">
+        <span class="text-xs text-slate-400">Max Output Tokens</span>
+        <input id="maxTokens" type="number" value="256" min="1" max="4096"
+          class="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg
+                 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+      </label>
+      <label class="block">
+        <span class="text-xs text-slate-400">
+          Latency Weight λ ($/s)
+          <span class="text-slate-500 ml-1">— higher → prefer faster providers</span>
+        </span>
+        <input id="latencyWeight" type="number" value="0.001" min="0" step="0.0001"
+          class="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg
+                 px-3 py-2 text-sm font-mono text-white focus:outline-none
+                 focus:ring-1 focus:ring-blue-500" />
+      </label>
+    </div>
+
+    <!-- Cost Chart -->
+    <div class="glass rounded-xl p-5" id="chartCard" style="display:none">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+        Cost Breakdown
+      </h2>
+      <canvas id="costChart" height="160"></canvas>
+    </div>
+
+  </aside>
+
+  <!-- Main Panel -->
+  <main class="lg:col-span-2 flex flex-col gap-4">
+
+    <!-- Prompt Input -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+        Prompt
+      </h2>
+      <textarea id="prompt" rows="4" placeholder="Enter your prompt here…"
+        class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-4 py-3
+               text-sm text-white placeholder-slate-500
+               focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+      ></textarea>
+      <div class="flex items-center justify-between mt-3">
+        <span id="tokenEst" class="text-xs text-slate-500"></span>
+        <button id="submitBtn" onclick="submitPrompt()"
+          class="px-5 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-violet-600
+                 text-white text-sm font-semibold hover:opacity-90 active:scale-95
+                 transition-all disabled:opacity-50 disabled:cursor-not-allowed glow-blue">
+          Route &amp; Complete
+        </button>
+      </div>
+    </div>
+
+    <!-- Routing Decision -->
+    <div id="routingPanel" class="glass rounded-xl p-5 slide-in" style="display:none">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+        Routing Decision
+      </h2>
+
+      <!-- Winner Banner -->
+      <div id="winnerBanner" class="rounded-lg px-4 py-3 mb-4 flex items-center gap-3
+                                    bg-emerald-500/10 border border-emerald-500/30">
+        <span class="text-lg">🏆</span>
+        <div>
+          <div id="winnerName" class="text-sm font-semibold text-emerald-400"></div>
+          <div id="winnerSavings" class="text-xs text-slate-400 mt-0.5"></div>
+        </div>
+        <div class="ml-auto text-right">
+          <div id="winnerCost" class="text-sm font-mono font-bold text-white"></div>
+          <div class="text-xs text-slate-500">effective cost</div>
+        </div>
+      </div>
+
+      <!-- Candidates Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-slate-500 border-b border-slate-700">
+              <th class="text-left py-2 pr-3 font-medium">Provider</th>
+              <th class="text-left py-2 pr-3 font-medium">Model</th>
+              <th class="text-right py-2 pr-3 font-medium">Tokens</th>
+              <th class="text-right py-2 pr-3 font-medium">Compute $</th>
+              <th class="text-right py-2 pr-3 font-medium">Lat (ms)</th>
+              <th class="text-right py-2 pr-3 font-medium">Lat $</th>
+              <th class="text-right py-2 font-medium">Total $</th>
+            </tr>
+          </thead>
+          <tbody id="candidatesBody"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3 text-xs text-slate-500 font-mono">
+        effective_cost = compute_cost + λ × latency_s &nbsp;|&nbsp;
+        λ = <span id="lambdaDisplay"></span> $/s
+      </div>
+    </div>
+
+    <!-- Response -->
+    <div id="responsePanel" class="glass rounded-xl p-5 slide-in" style="display:none">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Response
+        </h2>
+        <div id="responseMeta" class="flex items-center gap-3 text-xs text-slate-400"></div>
+      </div>
+      <div id="responseText"
+        class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap
+               bg-slate-800/40 rounded-lg p-4 max-h-64 overflow-y-auto"></div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingPanel" class="glass rounded-xl p-8 flex flex-col items-center
+                                  justify-center gap-4" style="display:none">
+      <div class="w-10 h-10 border-2 border-blue-500/30 border-t-blue-500
+                  rounded-full animate-spin"></div>
+      <div class="text-sm text-slate-400" id="loadingText">Evaluating providers…</div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── History ────────────────────────────────────────────────────────── -->
+<div class="max-w-7xl mx-auto px-6 pb-10">
+  <div class="glass rounded-xl p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400">
+        Request History
+      </h2>
+      <button onclick="loadHistory()"
+        class="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+        Refresh ↻
+      </button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-slate-500 border-b border-slate-700">
+            <th class="text-left py-2 pr-3 font-medium w-6">#</th>
+            <th class="text-left py-2 pr-3 font-medium">Time</th>
+            <th class="text-left py-2 pr-3 font-medium">Prompt</th>
+            <th class="text-left py-2 pr-3 font-medium">Provider</th>
+            <th class="text-left py-2 pr-3 font-medium">Model</th>
+            <th class="text-right py-2 pr-3 font-medium">Cost $</th>
+            <th class="text-right py-2 font-medium">Latency</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody">
+          <tr><td colspan="7" class="py-6 text-center text-slate-600">No requests yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── Scripts ────────────────────────────────────────────────────────── -->
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+let costChartInstance = null;
+let providers = [];
+
+// ── Helpers ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function fmt$(n) {
+  if (n === null || n === undefined) return '—';
+  if (n < 0.00001) return '$' + n.toExponential(2);
+  return '$' + n.toFixed(6);
+}
+function fmtMs(ms) {
+  return ms ? Math.round(ms) + ' ms' : '—';
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+function estimateTokens(text) {
+  return Math.max(1, Math.ceil(text.split(/\s+/).filter(Boolean).length * 1.35));
+}
+
+// colour by rank
+function rankColour(i) {
+  return i === 0 ? 'text-emerald-400' : i === 1 ? 'text-amber-400' : 'text-red-400';
+}
+
+// ── Provider badges (header) ──────────────────────────────────────────
+function renderProviderBadges(provs) {
+  const online = provs.length;
+  const live = provs.filter(p => p.is_configured).length;
+  $('providerBadges').innerHTML = `
+    <span class="pulse-dot text-slate-300">${online} providers</span>
+    ${live > 0
+      ? `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">${live} live</span>`
+      : `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">mock mode</span>`
+    }
+  `;
+}
+
+// ── Provider sidebar ──────────────────────────────────────────────────
+function renderProviderList(provs) {
+  $('providerList').innerHTML = provs.map(p => `
+    <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-800/40">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full ${p.is_configured ? 'bg-emerald-400' : 'bg-amber-400'}"></span>
+        <span class="font-medium text-white">${p.display_name}</span>
+      </div>
+      <div class="text-right">
+        <div class="text-slate-400 text-xs">${p.default_model}</div>
+        <div class="text-slate-500 text-xs">${p.typical_latency_ms} ms</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Stats Bar ─────────────────────────────────────────────────────────
+function renderStats(m) {
+  $('stat-total').textContent = m.total_requests || '0';
+  $('stat-cost').textContent  = m.avg_effective_cost ? fmt$(m.avg_effective_cost) : '—';
+  $('stat-lat').textContent   = m.avg_latency_ms ? fmtMs(m.avg_latency_ms) : '—';
+  $('stat-saved').textContent = m.total_cost_saved ? fmt$(m.total_cost_saved) : '—';
+}
+
+// ── Routing Decision Panel ────────────────────────────────────────────
+function renderRoutingDecision(resp) {
+  const candidates = resp.candidates;
+  const weight = resp.latency_weight;
+
+  $('routingPanel').style.display = 'block';
+  $('lambdaDisplay').textContent = weight;
+
+  // Winner banner
+  const winner = candidates.find(c => c.selected);
+  const maxCost = Math.max(...candidates.map(c => c.effective_cost));
+  const savings = maxCost > 0 ? ((maxCost - winner.effective_cost) / maxCost * 100).toFixed(1) : 0;
+
+  $('winnerName').textContent    = `${winner.provider_display} · ${winner.model}`;
+  $('winnerCost').textContent    = fmt$(winner.effective_cost);
+  $('winnerSavings').textContent = `${savings}% cheaper than most expensive option`;
+
+  // Candidates table
+  $('candidatesBody').innerHTML = candidates.map((c, i) => `
+    <tr class="${c.selected ? 'winner-row' : ''} border-b border-slate-800">
+      <td class="py-2 pr-3 font-medium ${c.selected ? 'text-emerald-400' : 'text-slate-300'}">
+        ${c.selected ? '✓' : '·'} ${c.provider_display}
+      </td>
+      <td class="py-2 pr-3 text-slate-400 font-mono">${c.model}</td>
+      <td class="py-2 pr-3 text-right text-slate-400 font-mono">
+        ${c.est_input_tokens}+${c.est_output_tokens}
+      </td>
+      <td class="py-2 pr-3 text-right font-mono ${rankColour(i)}">${fmt$(c.compute_cost)}</td>
+      <td class="py-2 pr-3 text-right text-slate-400">${c.latency_ms}</td>
+      <td class="py-2 pr-3 text-right font-mono text-slate-400">${fmt$(c.latency_cost)}</td>
+      <td class="py-2 text-right font-mono font-bold ${rankColour(i)}">${fmt$(c.effective_cost)}</td>
+    </tr>
+  `).join('');
+
+  // Chart
+  renderCostChart(candidates);
+}
+
+function renderCostChart(candidates) {
+  $('chartCard').style.display = 'block';
+  const labels  = candidates.map(c => c.provider_display.replace(' ', '\n'));
+  const compute = candidates.map(c => c.compute_cost);
+  const latency = candidates.map(c => c.latency_cost);
+
+  if (costChartInstance) costChartInstance.destroy();
+  costChartInstance = new Chart($('costChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Compute $', data: compute, backgroundColor: 'rgba(59,130,246,0.75)', borderRadius: 4 },
+        { label: 'Latency $', data: latency, backgroundColor: 'rgba(139,92,246,0.75)', borderRadius: 4 },
+      ],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+        tooltip: {
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt$(ctx.raw)}` }
+        }
+      },
+      scales: {
+        x: { stacked: true, ticks: { color:'#64748b', callback: v => fmt$(v) }, grid: { color:'#1e293b' } },
+        y: { stacked: true, ticks: { color:'#94a3b8' }, grid: { color:'#1e293b' } },
+      },
+    },
+  });
+}
+
+// ── Response Panel ────────────────────────────────────────────────────
+function renderResponse(resp) {
+  $('responsePanel').style.display = 'block';
+  $('responseText').textContent = resp.text;
+
+  const mockBadge = resp.is_mock
+    ? `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30
+                   px-2 py-0.5 rounded-full">mock</span>`
+    : `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30
+                   px-2 py-0.5 rounded-full">live</span>`;
+
+  $('responseMeta').innerHTML = `
+    ${mockBadge}
+    <span>${resp.input_tokens} in / ${resp.output_tokens} out tokens</span>
+    <span>${fmtMs(resp.actual_latency_ms)}</span>
+    <span class="font-mono text-emerald-400">${fmt$(resp.effective_cost)}</span>
+  `;
+}
+
+// ── History ───────────────────────────────────────────────────────────
+function renderHistory(rows) {
+  if (!rows.length) {
+    $('historyBody').innerHTML = `<tr><td colspan="7"
+      class="py-6 text-center text-slate-600">No requests yet.</td></tr>`;
+    return;
+  }
+  $('historyBody').innerHTML = rows.map(r => `
+    <tr class="border-b border-slate-800/60 hover:bg-slate-800/20">
+      <td class="py-2 pr-3 text-slate-500">${r.id}</td>
+      <td class="py-2 pr-3 text-slate-500 font-mono whitespace-nowrap">${fmtTime(r.timestamp)}</td>
+      <td class="py-2 pr-3 text-slate-300 max-w-xs truncate">${escHtml(r.prompt_snippet)}</td>
+      <td class="py-2 pr-3 text-slate-300">${r.provider_display}</td>
+      <td class="py-2 pr-3 text-slate-400 font-mono">${r.model}</td>
+      <td class="py-2 pr-3 text-right font-mono text-emerald-400">${fmt$(r.effective_cost)}</td>
+      <td class="py-2 text-right text-slate-400">${fmtMs(r.actual_latency_ms)}</td>
+    </tr>
+  `).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Token estimate while typing ───────────────────────────────────────
+$('prompt').addEventListener('input', () => {
+  const t = $('prompt').value;
+  if (t.trim()) {
+    $('tokenEst').textContent = `~${estimateTokens(t)} input tokens`;
+  } else {
+    $('tokenEst').textContent = '';
+  }
+});
+
+// ── Submit ────────────────────────────────────────────────────────────
+async function submitPrompt() {
+  const prompt = $('prompt').value.trim();
+  if (!prompt) { $('prompt').focus(); return; }
+
+  const maxTokens     = parseInt($('maxTokens').value) || 256;
+  const latencyWeight = parseFloat($('latencyWeight').value) || 0.001;
+
+  // show loading, hide results
+  $('submitBtn').disabled = true;
+  $('loadingPanel').style.display = 'flex';
+  $('routingPanel').style.display = 'none';
+  $('responsePanel').style.display = 'none';
+
+  // animate loading text
+  const loadingMessages = [
+    'Evaluating providers…',
+    'Calculating effective costs…',
+    'Selecting optimal route…',
+    'Running inference…',
+  ];
+  let msgIdx = 0;
+  const msgTimer = setInterval(() => {
+    msgIdx = (msgIdx + 1) % loadingMessages.length;
+    $('loadingText').textContent = loadingMessages[msgIdx];
+  }, 600);
+
+  try {
+    const res = await fetch('/api/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, max_tokens: maxTokens, latency_weight: latencyWeight }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Request failed');
+    }
+
+    const data = await res.json();
+
+    $('loadingPanel').style.display = 'none';
+    renderRoutingDecision(data);
+    renderResponse(data);
+
+    // refresh stats & history
+    loadMetrics();
+    loadHistory();
+
+  } catch (e) {
+    $('loadingPanel').style.display = 'none';
+    $('responsePanel').style.display = 'block';
+    $('responseText').textContent = '⚠️  Error: ' + e.message;
+    $('responseMeta').innerHTML = '';
+  } finally {
+    clearInterval(msgTimer);
+    $('submitBtn').disabled = false;
+  }
+}
+
+// allow Ctrl+Enter to submit
+$('prompt').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitPrompt();
+});
+
+// ── Load providers ────────────────────────────────────────────────────
+async function loadProviders() {
+  try {
+    const res = await fetch('/api/providers');
+    providers = await res.json();
+    renderProviderBadges(providers);
+    renderProviderList(providers);
+  } catch { /* ignore */ }
+}
+
+// ── Load metrics ──────────────────────────────────────────────────────
+async function loadMetrics() {
+  try {
+    const res = await fetch('/api/metrics');
+    const m = await res.json();
+    renderStats(m);
+  } catch { /* ignore */ }
+}
+
+// ── Load history ──────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/history?n=20');
+    const rows = await res.json();
+    renderHistory(rows);
+  } catch { /* ignore */ }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────
+(async () => {
+  await loadProviders();
+  await loadMetrics();
+  await loadHistory();
+  // poll metrics every 10 s
+  setInterval(loadMetrics, 10_000);
+})();
+</script>
+</body>
+</html>
