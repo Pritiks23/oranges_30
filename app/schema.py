@@ -29,12 +29,17 @@ class ProviderCandidate(BaseModel):
     model_id: str
     est_input_tokens: int
     est_output_tokens: int
-    compute_cost: float     # USD
-    latency_ms: int         # typical latency baseline
-    latency_cost: float     # USD  = weight * latency_s
-    effective_cost: float   # compute_cost + latency_cost
+    compute_cost: float        # USD
+    latency_ms: float          # latency used for routing (observed EWA or fallback)
+    latency_cost: float        # USD  = weight * latency_s
+    effective_cost: float      # compute_cost + latency_cost
     is_mock: bool
     selected: bool = False
+    # Pricing provenance
+    price_source: str = "hardcoded"   # "live" | "cached" | "hardcoded"
+    price_note: str = ""
+    latency_source: str = "baseline"  # "observed" | "baseline"
+    latency_samples: int = 0          # number of real observations behind EWA
 
 
 class CompletionResponse(BaseModel):
@@ -81,3 +86,25 @@ class HistoryEntry(BaseModel):
     effective_cost: float
     actual_latency_ms: float
     is_mock: bool
+
+
+# ── Pricing endpoint schemas ──────────────────────────────────────────────────
+
+class PricingModelInfo(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    provider: str
+    provider_display: str
+    model_key: str
+    model_id: str
+    input_per_1m: float
+    output_per_1m: float
+    source: str          # "live" | "cached" | "hardcoded"
+    source_display: str  # e.g. "live (42s ago)"
+    provider_note: str
+    fetched_at: Optional[str]
+
+
+class PricingResponse(BaseModel):
+    last_refresh: Optional[str]
+    models: List[PricingModelInfo]
+

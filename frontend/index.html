@@ -15,7 +15,6 @@
       backdrop-filter: blur(12px);
     }
     .glow-blue  { box-shadow: 0 0 20px rgba(59,130,246,0.25); }
-    .glow-green { box-shadow: 0 0 20px rgba(16,185,129,0.25); }
     .winner-row { background: rgba(16,185,129,0.12); border-left: 3px solid #10b981; }
     .pulse-dot::before {
       content: '';
@@ -35,8 +34,6 @@
       from { opacity:0; transform:translateY(12px); }
       to   { opacity:1; transform:translateY(0); }
     }
-    .fade-in { animation: fadeIn .4s ease; }
-    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
     textarea { resize: vertical; }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -65,7 +62,7 @@
 
 <!-- ── Stats Bar ───────────────────────────────────────────────────────── -->
 <div class="max-w-7xl mx-auto px-6 pt-6 pb-2">
-  <div id="statsBar" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     <div class="glass rounded-xl p-4">
       <div class="text-xs text-slate-400 mb-1">Total Requests</div>
       <div id="stat-total" class="text-2xl font-bold text-white">—</div>
@@ -97,6 +94,38 @@
         Providers
       </h2>
       <div id="providerList" class="flex flex-col gap-2 text-sm">
+        <div class="text-slate-500 text-xs">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Live Pricing Panel -->
+    <div class="glass rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Token Pricing
+        </h2>
+        <div class="flex items-center gap-2">
+          <span id="pricingRefreshTime" class="text-xs text-slate-600"></span>
+          <button onclick="forcePricingRefresh()"
+            class="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            title="Refresh prices now">↻</button>
+        </div>
+      </div>
+      <div id="pricingLegend" class="flex items-center gap-3 mb-3 text-xs">
+        <span class="flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+          <span class="text-slate-400">live</span>
+        </span>
+        <span class="flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
+          <span class="text-slate-400">cached</span>
+        </span>
+        <span class="flex items-center gap-1">
+          <span class="w-2 h-2 rounded-full bg-slate-500 inline-block"></span>
+          <span class="text-slate-400">hardcoded</span>
+        </span>
+      </div>
+      <div id="pricingTable" class="flex flex-col gap-1">
         <div class="text-slate-500 text-xs">Loading…</div>
       </div>
     </div>
@@ -165,8 +194,8 @@
       </h2>
 
       <!-- Winner Banner -->
-      <div id="winnerBanner" class="rounded-lg px-4 py-3 mb-4 flex items-center gap-3
-                                    bg-emerald-500/10 border border-emerald-500/30">
+      <div class="rounded-lg px-4 py-3 mb-4 flex items-center gap-3
+                  bg-emerald-500/10 border border-emerald-500/30">
         <span class="text-lg">🏆</span>
         <div>
           <div id="winnerName" class="text-sm font-semibold text-emerald-400"></div>
@@ -187,7 +216,7 @@
               <th class="text-left py-2 pr-3 font-medium">Model</th>
               <th class="text-right py-2 pr-3 font-medium">Tokens</th>
               <th class="text-right py-2 pr-3 font-medium">Compute $</th>
-              <th class="text-right py-2 pr-3 font-medium">Lat (ms)</th>
+              <th class="text-right py-2 pr-3 font-medium">Latency</th>
               <th class="text-right py-2 pr-3 font-medium">Lat $</th>
               <th class="text-right py-2 font-medium">Total $</th>
             </tr>
@@ -283,18 +312,40 @@ function fmtTime(iso) {
 function estimateTokens(text) {
   return Math.max(1, Math.ceil(text.split(/\s+/).filter(Boolean).length * 1.35));
 }
-
-// colour by rank
-function rankColour(i) {
+function rankColor(i) {
   return i === 0 ? 'text-emerald-400' : i === 1 ? 'text-amber-400' : 'text-red-400';
+}
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Pricing source badge
+function priceBadge(source) {
+  if (source === 'live')
+    return `<span class="inline-flex items-center gap-1">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+      <span class="text-emerald-400">live</span></span>`;
+  if (source === 'cached')
+    return `<span class="inline-flex items-center gap-1">
+      <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span>
+      <span class="text-amber-400">cached</span></span>`;
+  return `<span class="inline-flex items-center gap-1">
+    <span class="w-1.5 h-1.5 rounded-full bg-slate-500 inline-block"></span>
+    <span class="text-slate-500">hardcoded</span></span>`;
+}
+
+// Latency source badge
+function latencyBadge(source, samples) {
+  if (source === 'observed')
+    return `<span class="text-emerald-400 font-mono" title="${samples} observed samples">obs</span>`;
+  return `<span class="text-slate-500 font-mono" title="static baseline">base</span>`;
 }
 
 // ── Provider badges (header) ──────────────────────────────────────────
 function renderProviderBadges(provs) {
-  const online = provs.length;
   const live = provs.filter(p => p.is_configured).length;
   $('providerBadges').innerHTML = `
-    <span class="pulse-dot text-slate-300">${online} providers</span>
+    <span class="pulse-dot text-slate-300">${provs.length} providers</span>
     ${live > 0
       ? `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">${live} live</span>`
       : `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">mock mode</span>`
@@ -318,6 +369,44 @@ function renderProviderList(provs) {
   `).join('');
 }
 
+// ── Live Pricing Panel ────────────────────────────────────────────────
+function renderPricingTable(data) {
+  if (!data || !data.models) return;
+
+  if (data.last_refresh) {
+    const age = Math.round((Date.now() - new Date(data.last_refresh).getTime()) / 1000);
+    $('pricingRefreshTime').textContent = `refreshed ${age}s ago`;
+  }
+
+  // Group by provider
+  const byProvider = {};
+  for (const m of data.models) {
+    if (!byProvider[m.provider]) byProvider[m.provider] = { display: m.provider_display, models: [] };
+    byProvider[m.provider].models.push(m);
+  }
+
+  $('pricingTable').innerHTML = Object.values(byProvider).map(pg => `
+    <div class="mb-3">
+      <div class="text-xs font-semibold text-slate-400 mb-1">${pg.display}</div>
+      ${pg.models.map(m => `
+        <div class="flex items-center justify-between py-1 border-b border-slate-800/60 text-xs"
+             title="${escHtml(m.provider_note || '')}">
+          <div class="flex items-center gap-2 min-w-0">
+            ${priceBadge(m.source)}
+            <span class="text-slate-400 font-mono truncate">${m.model_key}</span>
+          </div>
+          <div class="text-right shrink-0 ml-2">
+            <span class="font-mono text-slate-300">$${m.input_per_1m.toFixed(3)}</span>
+            <span class="text-slate-600"> / </span>
+            <span class="font-mono text-slate-300">$${m.output_per_1m.toFixed(3)}</span>
+            <span class="text-slate-600 ml-1">/1M</span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
 // ── Stats Bar ─────────────────────────────────────────────────────────
 function renderStats(m) {
   $('stat-total').textContent = m.total_requests || '0';
@@ -334,7 +423,6 @@ function renderRoutingDecision(resp) {
   $('routingPanel').style.display = 'block';
   $('lambdaDisplay').textContent = weight;
 
-  // Winner banner
   const winner = candidates.find(c => c.selected);
   const maxCost = Math.max(...candidates.map(c => c.effective_cost));
   const savings = maxCost > 0 ? ((maxCost - winner.effective_cost) / maxCost * 100).toFixed(1) : 0;
@@ -343,7 +431,6 @@ function renderRoutingDecision(resp) {
   $('winnerCost').textContent    = fmt$(winner.effective_cost);
   $('winnerSavings').textContent = `${savings}% cheaper than most expensive option`;
 
-  // Candidates table
   $('candidatesBody').innerHTML = candidates.map((c, i) => `
     <tr class="${c.selected ? 'winner-row' : ''} border-b border-slate-800">
       <td class="py-2 pr-3 font-medium ${c.selected ? 'text-emerald-400' : 'text-slate-300'}">
@@ -353,20 +440,25 @@ function renderRoutingDecision(resp) {
       <td class="py-2 pr-3 text-right text-slate-400 font-mono">
         ${c.est_input_tokens}+${c.est_output_tokens}
       </td>
-      <td class="py-2 pr-3 text-right font-mono ${rankColour(i)}">${fmt$(c.compute_cost)}</td>
-      <td class="py-2 pr-3 text-right text-slate-400">${c.latency_ms}</td>
+      <td class="py-2 pr-2 text-right font-mono ${rankColor(i)}">
+        ${fmt$(c.compute_cost)}
+        <span class="ml-1">${priceBadge(c.price_source)}</span>
+      </td>
+      <td class="py-2 pr-3 text-right text-slate-400">
+        ${Math.round(c.latency_ms)}
+        <span class="ml-1">${latencyBadge(c.latency_source, c.latency_samples)}</span>
+      </td>
       <td class="py-2 pr-3 text-right font-mono text-slate-400">${fmt$(c.latency_cost)}</td>
-      <td class="py-2 text-right font-mono font-bold ${rankColour(i)}">${fmt$(c.effective_cost)}</td>
+      <td class="py-2 text-right font-mono font-bold ${rankColor(i)}">${fmt$(c.effective_cost)}</td>
     </tr>
   `).join('');
 
-  // Chart
   renderCostChart(candidates);
 }
 
 function renderCostChart(candidates) {
   $('chartCard').style.display = 'block';
-      const labels  = candidates.map(c => c.provider_display.replace(/ /g, '\n'));
+  const labels  = candidates.map(c => c.provider_display.replace(/ /g, '\n'));
   const compute = candidates.map(c => c.compute_cost);
   const latency = candidates.map(c => c.latency_cost);
 
@@ -385,9 +477,7 @@ function renderCostChart(candidates) {
       responsive: true,
       plugins: {
         legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
-        tooltip: {
-          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt$(ctx.raw)}` }
-        }
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt$(ctx.raw)}` } }
       },
       scales: {
         x: { stacked: true, ticks: { color:'#64748b', callback: v => fmt$(v) }, grid: { color:'#1e293b' } },
@@ -403,10 +493,8 @@ function renderResponse(resp) {
   $('responseText').textContent = resp.text;
 
   const mockBadge = resp.is_mock
-    ? `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30
-                   px-2 py-0.5 rounded-full">mock</span>`
-    : `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30
-                   px-2 py-0.5 rounded-full">live</span>`;
+    ? `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">mock</span>`
+    : `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">live</span>`;
 
   $('responseMeta').innerHTML = `
     ${mockBadge}
@@ -436,18 +524,10 @@ function renderHistory(rows) {
   `).join('');
 }
 
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
 // ── Token estimate while typing ───────────────────────────────────────
 $('prompt').addEventListener('input', () => {
   const t = $('prompt').value;
-  if (t.trim()) {
-    $('tokenEst').textContent = `~${estimateTokens(t)} input tokens`;
-  } else {
-    $('tokenEst').textContent = '';
-  }
+  $('tokenEst').textContent = t.trim() ? `~${estimateTokens(t)} input tokens` : '';
 });
 
 // ── Submit ────────────────────────────────────────────────────────────
@@ -458,14 +538,13 @@ async function submitPrompt() {
   const maxTokens     = parseInt($('maxTokens').value) || 256;
   const latencyWeight = parseFloat($('latencyWeight').value) || 0.001;
 
-  // show loading, hide results
   $('submitBtn').disabled = true;
   $('loadingPanel').style.display = 'flex';
   $('routingPanel').style.display = 'none';
   $('responsePanel').style.display = 'none';
 
-  // animate loading text
   const loadingMessages = [
+    'Fetching live prices…',
     'Evaluating providers…',
     'Calculating effective costs…',
     'Selecting optimal route…',
@@ -490,14 +569,12 @@ async function submitPrompt() {
     }
 
     const data = await res.json();
-
     $('loadingPanel').style.display = 'none';
     renderRoutingDecision(data);
     renderResponse(data);
-
-    // refresh stats & history
     loadMetrics();
     loadHistory();
+    loadPricing();
 
   } catch (e) {
     $('loadingPanel').style.display = 'none';
@@ -510,7 +587,6 @@ async function submitPrompt() {
   }
 }
 
-// allow Ctrl+Enter to submit
 $('prompt').addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitPrompt();
 });
@@ -529,8 +605,7 @@ async function loadProviders() {
 async function loadMetrics() {
   try {
     const res = await fetch('/api/metrics');
-    const m = await res.json();
-    renderStats(m);
+    renderStats(await res.json());
   } catch { /* ignore */ }
 }
 
@@ -538,18 +613,32 @@ async function loadMetrics() {
 async function loadHistory() {
   try {
     const res = await fetch('/api/history?n=20');
-    const rows = await res.json();
-    renderHistory(rows);
+    renderHistory(await res.json());
+  } catch { /* ignore */ }
+}
+
+// ── Load pricing ──────────────────────────────────────────────────────
+async function loadPricing() {
+  try {
+    const res = await fetch('/api/pricing');
+    renderPricingTable(await res.json());
+  } catch { /* ignore */ }
+}
+
+// ── Force pricing refresh ──────────────────────────────────────────────
+async function forcePricingRefresh() {
+  $('pricingRefreshTime').textContent = 'refreshing…';
+  try {
+    await fetch('/api/pricing/refresh', { method: 'POST' });
+    await loadPricing();
   } catch { /* ignore */ }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────
 (async () => {
-  await loadProviders();
-  await loadMetrics();
-  await loadHistory();
-  // poll metrics every 10 s
+  await Promise.all([loadProviders(), loadMetrics(), loadHistory(), loadPricing()]);
   setInterval(loadMetrics, 10_000);
+  setInterval(loadPricing, 60_000);  // refresh pricing display every minute
 })();
 </script>
 </body>

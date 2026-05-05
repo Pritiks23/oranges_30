@@ -7,21 +7,27 @@ Effective cost formula
 
   compute_cost  = (input_tokens  * input_cost_per_1M
                 +  output_tokens * output_cost_per_1M) / 1_000_000
-  latency_cost  = latency_weight_$/s * (typical_latency_ms / 1000)
+  latency_cost  = latency_weight_$/s * (latency_ms / 1000)
 
-The provider with the lowest effective_cost is selected.
+Prices and latency come from live sources:
+  • compute_cost  — PricingService (Azure: live REST API; AWS: Pricing API;
+                    GCP: hardcoded, labeled as such)
+  • latency_ms    — LatencyTracker EWA from real observed requests;
+                    falls back to static baseline until enough samples exist
 """
 from __future__ import annotations
 
 import math
-from typing import List, Tuple
+from typing import List
 
 from adapters.aws import AWSAdapter
 from adapters.azure import AzureAdapter
 from adapters.base import BaseAdapter
 from adapters.gcp import GCPAdapter
+from app.latency import latency_tracker
 from app.schema import CompletionResponse, ProviderCandidate
-from config.config import PROVIDERS, router_config
+from config.config import PROVIDERS
+from config.pricing import pricing_service
 
 
 # Singleton adapter instances
@@ -38,7 +44,11 @@ def build_candidates(
     max_tokens: int,
     latency_weight: float,
 ) -> List[ProviderCandidate]:
-    """Evaluate all providers and return ranked ProviderCandidate list."""
+    """
+    Evaluate all providers using live prices + observed latency EWA.
+    Returns a list sorted by ascending effective_cost, with selected=True
+    on the first (cheapest) entry.
+    """
     est_input = estimate_tokens(prompt)
     est_output = min(max_tokens, 200)  # conservative: most responses fit within 200 tokens
 
@@ -49,12 +59,19 @@ def build_candidates(
         model_key = cfg.default_model
         model_cfg = cfg.models[model_key]
 
+        # ── Live price lookup ────────────────────────────────────────────────
+        price_entry = pricing_service.get(adapter.name, model_key)
         compute_cost = (
-            est_input * model_cfg.input_cost_per_1m
-            + est_output * model_cfg.output_cost_per_1m
+            est_input  * price_entry.input_per_1m
+            + est_output * price_entry.output_per_1m
         ) / 1_000_000
 
-        latency_cost = latency_weight * (model_cfg.typical_latency_ms / 1000)
+        # ── Observed latency (EWA) or static baseline ────────────────────────
+        n_samples = latency_tracker.sample_count(adapter.name)
+        observed_ms = latency_tracker.get(adapter.name, model_cfg.typical_latency_ms)
+        latency_source = "observed" if n_samples > 0 else "baseline"
+
+        latency_cost = latency_weight * (observed_ms / 1000)
         effective_cost = compute_cost + latency_cost
 
         candidates.append(
@@ -66,11 +83,15 @@ def build_candidates(
                 est_input_tokens=est_input,
                 est_output_tokens=est_output,
                 compute_cost=compute_cost,
-                latency_ms=model_cfg.typical_latency_ms,
+                latency_ms=observed_ms,
                 latency_cost=latency_cost,
                 effective_cost=effective_cost,
                 is_mock=not adapter.is_configured,
                 selected=False,
+                price_source=price_entry.source,
+                price_note=price_entry.provider_note,
+                latency_source=latency_source,
+                latency_samples=n_samples,
             )
         )
 
@@ -92,6 +113,7 @@ async def route_and_complete(
     latency_weight: float | None = None,
 ) -> CompletionResponse:
     """Select the cheapest provider and run the completion."""
+    from config.config import router_config  # noqa: PLC0415
     weight = latency_weight if latency_weight is not None else router_config.latency_weight
 
     candidates = build_candidates(prompt, max_tokens, weight)
@@ -100,16 +122,19 @@ async def route_and_complete(
     adapter = _get_adapter(best.provider)
     result = await adapter.complete(prompt, max_tokens, best.model)
 
-    cfg = PROVIDERS[best.provider]
-    model_cfg = cfg.models[best.model]
+    # Record observed latency so future routing decisions use real data
+    latency_tracker.record(result.provider, result.latency_ms)
 
+    # Recompute final cost using live prices × actual token counts
+    price_entry = pricing_service.get(result.provider, result.model)
     actual_compute_cost = (
-        result.input_tokens * model_cfg.input_cost_per_1m
-        + result.output_tokens * model_cfg.output_cost_per_1m
+        result.input_tokens  * price_entry.input_per_1m
+        + result.output_tokens * price_entry.output_per_1m
     ) / 1_000_000
     actual_latency_cost = weight * (result.latency_ms / 1000)
     actual_effective_cost = actual_compute_cost + actual_latency_cost
 
+    cfg = PROVIDERS[result.provider]
     return CompletionResponse(
         text=result.text,
         provider=result.provider,
@@ -125,3 +150,4 @@ async def route_and_complete(
         is_mock=result.is_mock,
         candidates=candidates,
     )
+
