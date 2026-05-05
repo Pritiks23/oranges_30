@@ -17,7 +17,11 @@ from __future__ import annotations
 import threading
 from typing import Dict, Optional
 
-# Smoothing factor: higher → reacts faster but noisier
+# EWA smoothing factor α = 0.2.
+# Each new sample contributes 20% weight; the effective window ≈ 1/α = 5 observations.
+# This balances stability (avoids overreacting to a single slow request) with
+# responsiveness (adapts within ~5 requests if a provider's latency shifts).
+# Decrease towards 0.05 for more stability; increase towards 0.5 to react faster.
 _ALPHA = 0.2
 
 

@@ -167,12 +167,15 @@ class PricingService:
     # Docs: https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices
 
     async def _fetch_azure(self) -> None:
+        # Region is configurable; eastus is the primary pricing region for Azure OpenAI.
+        # Prices are the same across most regions; change AZURE_PRICING_REGION if needed.
+        azure_region = os.getenv("AZURE_PRICING_REGION", "eastus")
         url = "https://prices.azure.com/api/retail/prices"
         params = {
             "api-version": "2023-01-01-preview",
             "$filter": (
-                "serviceName eq 'Azure OpenAI' "
-                "and armRegionName eq 'eastus' "
+                f"serviceName eq 'Azure OpenAI' "
+                f"and armRegionName eq '{azure_region}' "
                 "and type eq 'Consumption'"
             ),
         }
@@ -181,7 +184,7 @@ class PricingService:
                 r = await client.get(url, params=params)
                 r.raise_for_status()
                 items = r.json().get("Items", [])
-        except Exception as exc:
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
             logger.warning("Azure pricing fetch failed: %s", exc)
             return
 
@@ -256,7 +259,10 @@ class PricingService:
             return
 
         region = os.getenv("AWS_REGION", "us-east-1")
-        # AWS Pricing API is only available in us-east-1 and ap-south-1
+        # The AWS Pricing API is only available in us-east-1 and ap-south-1.
+        # AWS Bedrock pricing is listed under the US East (N. Virginia) location regardless
+        # of which Bedrock region you deploy to; this is the canonical pricing source.
+        aws_pricing_location = os.getenv("AWS_PRICING_LOCATION", "US East (N. Virginia)")
         try:
             client = boto3.client("pricing", region_name="us-east-1")
             loop = asyncio.get_event_loop()
@@ -268,7 +274,7 @@ class PricingService:
                         {
                             "Type": "TERM_MATCH",
                             "Field": "location",
-                            "Value": "US East (N. Virginia)",
+                            "Value": aws_pricing_location,
                         }
                     ],
                     MaxResults=100,
@@ -279,7 +285,7 @@ class PricingService:
             return
 
         now = datetime.now(timezone.utc)
-        note = f"AWS Pricing API (region: {region})"
+        note = f"AWS Pricing API (location: {aws_pricing_location})"
 
         # Map Bedrock model identifiers → our keys
         _aws_map = {

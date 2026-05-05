@@ -68,17 +68,21 @@ async def _pricing_refresh_loop() -> None:
         try:
             await pricing_service.refresh_all()
             logger.info("Pricing cache refreshed.")
-        except Exception as exc:  # noqa: BLE001
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
             logger.warning("Background pricing refresh failed: %s", exc)
 
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    # Fetch live prices immediately at startup (non-blocking — failures are logged)
+    # Fetch live prices immediately at startup (non-blocking — network failures are logged)
     try:
         await pricing_service.refresh_all()
         logger.info("Initial pricing fetch complete.")
-    except Exception as exc:  # noqa: BLE001
+    except asyncio.CancelledError:
+        raise  # don't swallow cancellation
+    except Exception as exc:
         logger.warning("Initial pricing fetch failed: %s", exc)
     # Schedule periodic refresh
     asyncio.create_task(_pricing_refresh_loop())
