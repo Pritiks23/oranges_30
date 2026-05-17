@@ -28,7 +28,7 @@ class MetricsStore:
                 "avg_effective_cost": 0.0,
                 "avg_latency_ms": 0.0,
                 "total_cost_saved": 0.0,
-                "provider_breakdown": {},
+                "cluster_breakdown": {},
             }
 
         total = len(history)
@@ -41,25 +41,29 @@ class MetricsStore:
                 max_cost = max(c["effective_cost"] for c in r["candidates"])
                 total_saved += max_cost - r["effective_cost"]
 
-        provider_counts: Dict[str, int] = {}
-        provider_costs: Dict[str, float] = {}
+        cluster_counts: Dict[str, int] = {}
+        cluster_costs: Dict[str, float] = {}
+        cluster_info: Dict[str, Dict[str, str]] = {}
         for r in history:
-            p = r["provider"]
-            provider_counts[p] = provider_counts.get(p, 0) + 1
-            provider_costs[p] = provider_costs.get(p, 0.0) + r["effective_cost"]
+            cid = r["cluster_id"]
+            cluster_counts[cid] = cluster_counts.get(cid, 0) + 1
+            cluster_costs[cid] = cluster_costs.get(cid, 0.0) + r["effective_cost"]
+            if cid not in cluster_info:
+                cluster_info[cid] = {
+                    "provider": r["cluster_provider"],
+                    "gpu": r["cluster_gpu"],
+                }
 
-        provider_breakdown = {
-            p: {
-                "display": r["provider_display"],
-                "count": provider_counts[p],
-                "total_cost": provider_costs[p],
-                "avg_cost": provider_costs[p] / provider_counts[p],
-                "share_pct": round(provider_counts[p] / total * 100, 1),
+        cluster_breakdown = {
+            c: {
+                "provider": cluster_info[c]["provider"],
+                "gpu": cluster_info[c]["gpu"],
+                "count": cluster_counts[c],
+                "total_cost": cluster_costs[c],
+                "avg_cost": cluster_costs[c] / cluster_counts[c],
+                "share_pct": round(cluster_counts[c] / total * 100, 1),
             }
-            for p, r in {
-                p: next(x for x in history if x["provider"] == p)
-                for p in provider_counts
-            }.items()
+            for c in cluster_counts
         }
 
         return {
@@ -67,7 +71,7 @@ class MetricsStore:
             "avg_effective_cost": avg_cost,
             "avg_latency_ms": avg_latency,
             "total_cost_saved": total_saved,
-            "provider_breakdown": provider_breakdown,
+            "cluster_breakdown": cluster_breakdown,
         }
 
     def get_history(self, n: int = 20) -> List[Dict[str, Any]]:

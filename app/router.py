@@ -1,19 +1,18 @@
 """
-Core routing engine.
+Core routing engine — Cluster-based selection.
 
 Effective cost formula
 ──────────────────────
   effective_cost = compute_cost + latency_weight * (latency_ms / 1000)
 
-  compute_cost  = (input_tokens  * input_cost_per_1M
-                +  output_tokens * output_cost_per_1M) / 1_000_000
+  compute_cost  = tokens * cost_per_token_midpoint (from cluster spec)
   latency_cost  = latency_weight_$/s * (latency_ms / 1000)
 
-Prices and latency come from live sources:
-  • compute_cost  — PricingService (Azure: live REST API; AWS: Pricing API;
-                    GCP: hardcoded, labeled as such)
-  • latency_ms    — LatencyTracker EWA from real observed requests;
-                    falls back to static baseline until enough samples exist
+Costs and latency come from cluster specifications:
+  • compute_cost  — based on cluster's cost_per_token_midpoint (USD/token)
+  • latency_ms    — based on cluster's latency_ms_midpoint (p50)
+
+Routing selects the cluster with the lowest effective cost.
 """
 from __future__ import annotations
 
@@ -26,8 +25,8 @@ from adapters.base import BaseAdapter
 from adapters.gcp import GCPAdapter
 from app.latency import latency_tracker
 from app.schema import CompletionResponse, ProviderCandidate
+from config.clusters import CLUSTERS
 from config.config import PROVIDERS
-from config.pricing import pricing_service
 
 
 # Singleton adapter instances
@@ -45,53 +44,53 @@ def build_candidates(
     latency_weight: float,
 ) -> List[ProviderCandidate]:
     """
-    Evaluate all providers using live prices + observed latency EWA.
+    Evaluate all 10 clusters based on effective cost.
     Returns a list sorted by ascending effective_cost, with selected=True
     on the first (cheapest) entry.
     """
     est_input = estimate_tokens(prompt)
     est_output = min(max_tokens, 200)  # conservative: most responses fit within 200 tokens
+    total_tokens = est_input + est_output
 
     candidates: List[ProviderCandidate] = []
 
-    for adapter in _ADAPTERS:
-        cfg = PROVIDERS[adapter.name]
-        model_key = cfg.default_model
-        model_cfg = cfg.models[model_key]
+    for cluster_id, cluster_cfg in CLUSTERS.items():
+        # ── Cluster-based pricing (midpoint of range) ────────────────────────
+        cost_per_token = cluster_cfg.cost_per_token_midpoint
+        compute_cost = total_tokens * cost_per_token
 
-        # ── Live price lookup ────────────────────────────────────────────────
-        price_entry = pricing_service.get(adapter.name, model_key)
-        compute_cost = (
-            est_input  * price_entry.input_per_1m
-            + est_output * price_entry.output_per_1m
-        ) / 1_000_000
+        # ── Cluster-based latency (midpoint of range) ────────────────────────
+        latency_ms = cluster_cfg.latency_midpoint
 
-        # ── Observed latency (EWA) or static baseline ────────────────────────
-        n_samples = latency_tracker.sample_count(adapter.name)
-        observed_ms = latency_tracker.get(adapter.name, model_cfg.typical_latency_ms)
-        latency_source = "observed" if n_samples > 0 else "baseline"
-
-        latency_cost = latency_weight * (observed_ms / 1000)
+        latency_cost = latency_weight * (latency_ms / 1000)
         effective_cost = compute_cost + latency_cost
+
+        # Pick a representative model from cluster support
+        model = cluster_cfg.model_support[0] if cluster_cfg.model_support else "unknown"
+
+        gpu_util_range = f"{cluster_cfg.gpu_util_min}–{cluster_cfg.gpu_util_max}%"
+        batch_fill_range = f"{cluster_cfg.batch_fill_min}–{cluster_cfg.batch_fill_max}%"
 
         candidates.append(
             ProviderCandidate(
-                provider=adapter.name,
-                provider_display=cfg.display_name,
-                model=model_key,
-                model_id=model_cfg.model_id,
+                cluster_id=cluster_id,
+                cluster_provider=cluster_cfg.provider,
+                cluster_gpu=cluster_cfg.gpu_type,
+                model=model,
                 est_input_tokens=est_input,
                 est_output_tokens=est_output,
                 compute_cost=compute_cost,
-                latency_ms=observed_ms,
+                latency_ms=latency_ms,
                 latency_cost=latency_cost,
                 effective_cost=effective_cost,
-                is_mock=not adapter.is_configured,
+                is_mock=False,  # All clusters are treated as available
                 selected=False,
-                price_source=price_entry.source,
-                price_note=price_entry.provider_note,
-                latency_source=latency_source,
-                latency_samples=n_samples,
+                gpu_util_range=gpu_util_range,
+                batch_fill_range=batch_fill_range,
+                price_source="cluster",
+                price_note=cluster_cfg.notes,
+                latency_source="baseline",
+                latency_samples=0,
             )
         )
 
@@ -100,46 +99,42 @@ def build_candidates(
     return candidates
 
 
-def _get_adapter(name: str) -> BaseAdapter:
-    for a in _ADAPTERS:
-        if a.name == name:
-            return a
-    raise ValueError(f"No adapter for provider '{name}'")
-
 
 async def route_and_complete(
     prompt: str,
     max_tokens: int = 256,
     latency_weight: float | None = None,
 ) -> CompletionResponse:
-    """Select the cheapest provider and run the completion."""
+    """Select the lowest-cost cluster and run the completion."""
     from config.config import router_config  # noqa: PLC0415
     weight = latency_weight if latency_weight is not None else router_config.latency_weight
 
     candidates = build_candidates(prompt, max_tokens, weight)
     best = candidates[0]
 
-    adapter = _get_adapter(best.provider)
+    # Get cluster config for selected cluster
+    cluster_cfg = CLUSTERS[best.cluster_id]
+
+    # Use an adapter based on cluster provider (simple mapping)
+    adapter = _get_adapter_for_provider(cluster_cfg.provider)
     result = await adapter.complete(prompt, max_tokens, best.model)
 
-    # Record observed latency so future routing decisions use real data
-    latency_tracker.record(result.provider, result.latency_ms)
+    # Record observed latency for future optimization
+    latency_tracker.record(f"cluster_{best.cluster_id}", result.latency_ms)
 
-    # Recompute final cost using live prices × actual token counts
-    price_entry = pricing_service.get(result.provider, result.model)
-    actual_compute_cost = (
-        result.input_tokens  * price_entry.input_per_1m
-        + result.output_tokens * price_entry.output_per_1m
-    ) / 1_000_000
+    # Recompute final cost using cluster's cost_per_token × actual token counts
+    est_input = estimate_tokens(prompt)
+    est_output = result.output_tokens
+    actual_compute_cost = (est_input + est_output) * cluster_cfg.cost_per_token_midpoint
     actual_latency_cost = weight * (result.latency_ms / 1000)
     actual_effective_cost = actual_compute_cost + actual_latency_cost
 
-    cfg = PROVIDERS[result.provider]
     return CompletionResponse(
         text=result.text,
-        provider=result.provider,
-        provider_display=cfg.display_name,
-        model=result.model,
+        cluster_id=best.cluster_id,
+        cluster_provider=cluster_cfg.provider,
+        cluster_gpu=cluster_cfg.gpu_type,
+        model=best.model,
         actual_latency_ms=result.latency_ms,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
@@ -150,4 +145,19 @@ async def route_and_complete(
         is_mock=result.is_mock,
         candidates=candidates,
     )
+
+
+def _get_adapter_for_provider(provider_name: str) -> BaseAdapter:
+    """Map cluster provider name to an adapter."""
+    provider_map = {
+        "AWS": "aws",
+        "GCP": "gcp",
+        "Azure": "azure",
+    }
+    adapter_name = provider_map.get(provider_name, "aws")
+    for a in _ADAPTERS:
+        if a.name == adapter_name:
+            return a
+    # Fallback to AWS
+    return _ADAPTERS[0]
 

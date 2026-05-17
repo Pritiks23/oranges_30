@@ -21,12 +21,13 @@ from app.router import route_and_complete
 from app.schema import (
     CompletionRequest,
     CompletionResponse,
+    ClusterStatus,
     HistoryEntry,
     MetricsSummary,
     PricingModelInfo,
     PricingResponse,
-    ProviderStatus,
 )
+from config.clusters import CLUSTERS
 from config.config import PROVIDERS
 from config.pricing import pricing_service
 
@@ -102,7 +103,7 @@ async def serve_frontend() -> FileResponse:
 
 @app.post("/api/complete", response_model=CompletionResponse, tags=["inference"])
 async def complete(req: CompletionRequest) -> CompletionResponse:
-    """Route the prompt to the lowest-cost provider and return the completion."""
+    """Route the prompt to the lowest-cost cluster and return the completion."""
     response = await route_and_complete(
         prompt=req.prompt,
         max_tokens=req.max_tokens,
@@ -113,8 +114,9 @@ async def complete(req: CompletionRequest) -> CompletionResponse:
             "id": 0,  # overwritten by record()
             "timestamp": response.timestamp,
             "prompt_snippet": req.prompt[:80],
-            "provider": response.provider,
-            "provider_display": response.provider_display,
+            "cluster_id": response.cluster_id,
+            "cluster_provider": response.cluster_provider,
+            "cluster_gpu": response.cluster_gpu,
             "model": response.model,
             "effective_cost": response.effective_cost,
             "actual_latency_ms": response.actual_latency_ms,
@@ -125,21 +127,21 @@ async def complete(req: CompletionRequest) -> CompletionResponse:
     return response
 
 
-@app.get("/api/providers", response_model=List[ProviderStatus], tags=["system"])
-async def list_providers() -> List[ProviderStatus]:
-    """Return status and configuration for each provider."""
+@app.get("/api/clusters", response_model=List[ClusterStatus], tags=["system"])
+async def list_clusters() -> List[ClusterStatus]:
+    """Return status and configuration for each of the 10 inference clusters."""
     result = []
-    for key, adapter in _ADAPTERS.items():
-        cfg = PROVIDERS[key]
-        default_model_cfg = cfg.models[cfg.default_model]
+    for cluster_id, cfg in CLUSTERS.items():
+        effective_cost_str = f"${cfg.effective_cost_min:.9f}–${cfg.effective_cost_max:.9f}"
         result.append(
-            ProviderStatus(
-                name=key,
-                display_name=cfg.display_name,
-                is_configured=adapter.is_configured,
-                default_model=cfg.default_model,
-                models=list(cfg.models.keys()),
-                typical_latency_ms=default_model_cfg.typical_latency_ms,
+            ClusterStatus(
+                cluster_id=cluster_id,
+                provider=cfg.provider,
+                gpu_type=cfg.gpu_type,
+                model_support=cfg.model_support,
+                is_available=True,
+                effective_cost_range=effective_cost_str,
+                typical_latency_ms=cfg.latency_midpoint,
             )
         )
     return result
@@ -212,8 +214,9 @@ async def get_history(n: int = 20) -> List[HistoryEntry]:
             id=r["id"],
             timestamp=r["timestamp"],
             prompt_snippet=r["prompt_snippet"],
-            provider=r["provider"],
-            provider_display=r["provider_display"],
+            cluster_id=r["cluster_id"],
+            cluster_provider=r["cluster_provider"],
+            cluster_gpu=r["cluster_gpu"],
             model=r["model"],
             effective_cost=r["effective_cost"],
             actual_latency_ms=r["actual_latency_ms"],

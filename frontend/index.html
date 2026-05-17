@@ -489,11 +489,11 @@
   <!-- Left Sidebar -->
   <aside class="lg:col-span-1 flex flex-col gap-4">
 
-    <!-- Provider Status -->
+    <!-- Cluster Status -->
     <div class="panel">
-      <div class="panel-header">🔗 PROVIDER STATUS</div>
+      <div class="panel-header">🔗 CLUSTER STATUS</div>
       <div class="panel-content">
-        <div id="providerList" class="flex flex-col gap-2 text-sm">
+        <div id="clusterList" class="flex flex-col gap-2 text-sm">
         <div class="text-slate-500 text-xs">Loading…</div>
       </div>
     </div>
@@ -591,8 +591,9 @@
           <table class="table-neon">
             <thead>
               <tr>
+                <th>Cluster</th>
                 <th>Provider</th>
-                <th>Model</th>
+                <th>GPU</th>
                 <th style="text-align: right;">Tokens</th>
                 <th style="text-align: right;">Compute $</th>
                 <th style="text-align: right;">Latency</th>
@@ -653,14 +654,15 @@
               <th style="width: 30px;">#</th>
               <th>Time</th>
               <th>Prompt</th>
-              <th>Provider</th>
+              <th>Cluster</th>
+              <th>GPU</th>
               <th>Model</th>
               <th style="text-align: right;">Cost $</th>
               <th style="text-align: right;">Latency</th>
             </tr>
           </thead>
           <tbody id="historyBody">
-            <tr><td colspan="7" class="py-6 text-center text-slate-600">No requests yet.</td></tr>
+            <tr><td colspan="8" class="py-6 text-center text-slate-600">No requests yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -672,7 +674,6 @@
 <script>
 // ── State ──────────────────────────────────────────────────────────────
 let costChartInstance = null;
-let providers = [];
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -722,28 +723,28 @@ function latencyBadge(source, samples) {
 }
 
 // ── Provider badges (header) ──────────────────────────────────────────
-function renderProviderBadges(provs) {
-  const live = provs.filter(p => p.is_configured).length;
+function renderClusterBadges(clusters) {
+  const total = clusters.length;
   $('providerBadges').innerHTML = `
-    <span class="pulse-dot text-slate-300">${provs.length} providers</span>
-    ${live > 0
-      ? `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">${live} live</span>`
-      : `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">mock mode</span>`
-    }
+    <span class="pulse-dot text-slate-300">${total} clusters</span>
+    <span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">all available</span>
   `;
 }
 
-// ── Provider sidebar ──────────────────────────────────────────────────
-function renderProviderList(provs) {
-  $('providerList').innerHTML = provs.map(p => `
+// ── Cluster sidebar ──────────────────────────────────────────────────
+function renderClusterList(clusters) {
+  $('clusterList').innerHTML = clusters.slice(0, 5).map(c => `
     <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-800/40">
       <div class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full ${p.is_configured ? 'bg-emerald-400' : 'bg-amber-400'}"></span>
-        <span class="font-medium text-white">${p.display_name}</span>
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <div>
+          <span class="font-medium text-white">Cluster ${c.cluster_id}</span>
+          <div class="text-xs text-slate-500">${c.provider} ${c.gpu_type}</div>
+        </div>
       </div>
       <div class="text-right">
-        <div class="text-slate-400 text-xs">${p.default_model}</div>
-        <div class="text-slate-500 text-xs">${p.typical_latency_ms} ms</div>
+        <div class="text-slate-400 text-xs">${c.typical_latency_ms} ms</div>
+        <div class="text-slate-500 text-xs font-mono">${c.effective_cost_range}</div>
       </div>
     </div>
   `).join('');
@@ -807,26 +808,25 @@ function renderRoutingDecision(resp) {
   const maxCost = Math.max(...candidates.map(c => c.effective_cost));
   const savings = maxCost > 0 ? ((maxCost - winner.effective_cost) / maxCost * 100).toFixed(1) : 0;
 
-  $('winnerName').textContent    = `${winner.provider_display} · ${winner.model}`;
+  $('winnerName').textContent    = `Cluster ${winner.cluster_id} · ${winner.cluster_provider} ${winner.cluster_gpu}`;
   $('winnerCost').textContent    = fmt$(winner.effective_cost);
   $('winnerSavings').textContent = `${savings}% cheaper than most expensive option`;
 
   $('candidatesBody').innerHTML = candidates.map((c, i) => `
     <tr class="${c.selected ? 'winner-row' : ''} border-b border-slate-800">
       <td class="py-2 pr-3 font-medium ${c.selected ? 'text-emerald-400' : 'text-slate-300'}">
-        ${c.selected ? '✓' : '·'} ${c.provider_display}
+        ${c.selected ? '✓' : '·'} Cluster ${c.cluster_id}
       </td>
-      <td class="py-2 pr-3 text-slate-400 font-mono">${c.model}</td>
+      <td class="py-2 pr-3 text-slate-400 font-mono">${c.cluster_provider}</td>
+      <td class="py-2 pr-3 text-slate-400 font-mono text-xs">${c.cluster_gpu}</td>
       <td class="py-2 pr-3 text-right text-slate-400 font-mono">
         ${c.est_input_tokens}+${c.est_output_tokens}
       </td>
       <td class="py-2 pr-2 text-right font-mono ${rankColor(i)}">
         ${fmt$(c.compute_cost)}
-        <span class="ml-1">${priceBadge(c.price_source)}</span>
       </td>
       <td class="py-2 pr-3 text-right text-slate-400">
-        ${Math.round(c.latency_ms)}
-        <span class="ml-1">${latencyBadge(c.latency_source, c.latency_samples)}</span>
+        ${Math.round(c.latency_ms)} ms
       </td>
       <td class="py-2 pr-3 text-right font-mono text-slate-400">${fmt$(c.latency_cost)}</td>
       <td class="py-2 text-right font-mono font-bold ${rankColor(i)}">${fmt$(c.effective_cost)}</td>
@@ -838,7 +838,7 @@ function renderRoutingDecision(resp) {
 
 function renderCostChart(candidates) {
   $('chartCard').style.display = 'block';
-  const labels  = candidates.map(c => c.provider_display.replace(/ /g, '\n'));
+  const labels  = candidates.map(c => `C${c.cluster_id}`);
   const compute = candidates.map(c => c.compute_cost);
   const latency = candidates.map(c => c.latency_cost);
 
@@ -887,7 +887,7 @@ function renderResponse(resp) {
 // ── History ───────────────────────────────────────────────────────────
 function renderHistory(rows) {
   if (!rows.length) {
-    $('historyBody').innerHTML = `<tr><td colspan="7"
+    $('historyBody').innerHTML = `<tr><td colspan="8"
       class="py-6 text-center text-slate-600">No requests yet.</td></tr>`;
     return;
   }
@@ -896,7 +896,8 @@ function renderHistory(rows) {
       <td class="py-2 pr-3 text-slate-500">${r.id}</td>
       <td class="py-2 pr-3 text-slate-500 font-mono whitespace-nowrap">${fmtTime(r.timestamp)}</td>
       <td class="py-2 pr-3 text-slate-300 max-w-xs truncate">${escHtml(r.prompt_snippet)}</td>
-      <td class="py-2 pr-3 text-slate-300">${r.provider_display}</td>
+      <td class="py-2 pr-3 text-slate-300 font-bold">${r.cluster_id}</td>
+      <td class="py-2 pr-3 text-slate-400 text-xs">${r.cluster_provider} ${r.cluster_gpu}</td>
       <td class="py-2 pr-3 text-slate-400 font-mono">${r.model}</td>
       <td class="py-2 pr-3 text-right font-mono text-emerald-400">${fmt$(r.effective_cost)}</td>
       <td class="py-2 text-right text-slate-400">${fmtMs(r.actual_latency_ms)}</td>
@@ -924,10 +925,10 @@ async function submitPrompt() {
   $('responsePanel').style.display = 'none';
 
   const loadingMessages = [
-    'Fetching live prices…',
-    'Evaluating providers…',
+    'Fetching cluster specs…',
+    'Evaluating clusters…',
     'Calculating effective costs…',
-    'Selecting optimal route…',
+    'Selecting optimal cluster…',
     'Running inference…',
   ];
   let msgIdx = 0;
@@ -971,13 +972,13 @@ $('prompt').addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') submitPrompt();
 });
 
-// ── Load providers ────────────────────────────────────────────────────
-async function loadProviders() {
+// ── Load clusters ────────────────────────────────────────────────────
+async function loadClusters() {
   try {
-    const res = await fetch('/api/providers');
-    providers = await res.json();
-    renderProviderBadges(providers);
-    renderProviderList(providers);
+    const res = await fetch('/api/clusters');
+    const clusters = await res.json();
+    renderClusterBadges(clusters);
+    renderClusterList(clusters);
   } catch { /* ignore */ }
 }
 
@@ -1016,7 +1017,7 @@ async function forcePricingRefresh() {
 
 // ── Init ──────────────────────────────────────────────────────────────
 (async () => {
-  await Promise.all([loadProviders(), loadMetrics(), loadHistory(), loadPricing()]);
+  await Promise.all([loadClusters(), loadMetrics(), loadHistory(), loadPricing()]);
   setInterval(loadMetrics, 10_000);
   setInterval(loadPricing, 60_000);  // refresh pricing display every minute
 })();
