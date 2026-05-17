@@ -65,8 +65,13 @@ def build_candidates(
         latency_cost = latency_weight * (latency_ms / 1000)
         effective_cost = compute_cost + latency_cost
 
-        # Pick a representative model from cluster support
-        model = cluster_cfg.model_support[0] if cluster_cfg.model_support else "unknown"
+        # Get adapter for this cluster's provider
+        adapter = _get_adapter_for_provider(cluster_cfg.provider)
+        provider_cfg = PROVIDERS[adapter.name]
+        
+        # Pick a representative model from provider (use default model if available)
+        model_key = provider_cfg.default_model
+        model = model_key  # Use the actual model key, not the cluster's generic size
 
         gpu_util_range = f"{cluster_cfg.gpu_util_min}–{cluster_cfg.gpu_util_max}%"
         batch_fill_range = f"{cluster_cfg.batch_fill_min}–{cluster_cfg.batch_fill_max}%"

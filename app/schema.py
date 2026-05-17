@@ -64,6 +64,7 @@ class CompletionResponse(BaseModel):
 
 
 class ClusterStatus(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     cluster_id: str
     provider: str                # Cloud provider or vendor
     gpu_type: str

@@ -733,7 +733,7 @@ function renderClusterBadges(clusters) {
 
 // ── Cluster sidebar ──────────────────────────────────────────────────
 function renderClusterList(clusters) {
-  $('clusterList').innerHTML = clusters.slice(0, 5).map(c => `
+  $('clusterList').innerHTML = clusters.map(c => `
     <div class="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-800/40">
       <div class="flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
